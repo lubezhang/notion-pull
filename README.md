@@ -65,8 +65,8 @@ pnpm install
 
 ## 示例
 ```bash
-# 导出根页面及其子页面（示例：通过环境变量传入令牌）
-pnpm dev -- -t "$NOTION_TOKEN" --root "Coze-f65e00f2dc54485ca21278cc119dbc23" --out-dir "./backup"
+# 导出根页面及其子页面（建议通过环境变量传入令牌）
+pnpm dev -- -t "$NOTION_TOKEN" --root <pageId> --out-dir "./backup"
 
 ```
 

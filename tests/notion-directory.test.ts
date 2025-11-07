@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { Client } from "@notionhq/client";
 
 test("list Notion pages for configured workspace", async () => {
-    const token = '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';
+    const token = '';
     assert.ok(token, "请先设置 NOTION_TOKEN 环境变量");
 
     const notion = new Client({ auth: token });
-    const rootPageId = 'b6027980de4e47efa94a135465e072ca';
+    const rootPageId = '';
 
     try {
         if (rootPageId) {
