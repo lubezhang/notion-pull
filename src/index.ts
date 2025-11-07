@@ -1,6 +1,7 @@
 import { ExportConfig } from "./config";
 import { createRootDirectory, ensureChildDirectories } from "./directory";
 import { buildNotionDirectoryPlan } from "./notion/directoryPlan";
+import { writeMarkdownPages } from "./writer";
 
 /**
  * 目录创建入口：读取 Notion 页面结构并在本地创建对应的目录层级。
@@ -29,4 +30,6 @@ export async function runExport(config: ExportConfig): Promise<void> {
             result.relativePath === "." ? result.absolutePath : `${result.relativePath} -> ${result.absolutePath}`,
         );
     }
+
+    await writeMarkdownPages(rootPath, plan.leafPages, config.dryRun);
 }

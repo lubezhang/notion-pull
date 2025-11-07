@@ -5,6 +5,7 @@ import type {
     PageObjectResponse,
     PartialPageObjectResponse,
 } from "@notionhq/client/build/src/api-endpoints";
+import { NotionToMarkdown } from "notion-to-md";
 
 export interface NotionDirectoryPlanOptions {
     token: string;
@@ -12,9 +13,18 @@ export interface NotionDirectoryPlanOptions {
     maxDepth?: number;
 }
 
+export interface LeafPageExport {
+    id: string;
+    title?: string;
+    relativeDir: string;
+    fileName: string;
+    content: string;
+}
+
 export interface NotionDirectoryPlan {
     rootDirectoryName: string;
     childDirectories: string[];
+    leafPages: LeafPageExport[];
 }
 
 interface ChildPageInfo {
@@ -22,21 +32,32 @@ interface ChildPageInfo {
     title: string;
 }
 
+interface QueueItem {
+    id: string;
+    pathSegments: string[];
+    isRoot: boolean;
+    title?: string;
+}
+
 /**
- * 读取 Notion 页面层级并返回根目录名称及子目录列表。
+ * 读取 Notion 页面层级，生成目录结构与叶子页面 Markdown 内容。
  *
  * @param options Notion 访问参数
- * @returns 根目录名称与其子目录（相对于根）
+ * @returns 根目录名称、需要创建的子目录以及 Markdown 页面列表
  */
 export async function buildNotionDirectoryPlan(options: NotionDirectoryPlanOptions): Promise<NotionDirectoryPlan> {
     const client = new Client({ auth: options.token });
+    const renderer = new NotionToMarkdown({ notionClient: client });
     const rootId = normalizePageId(options.rootPageId);
     const effectiveMaxDepth = typeof options.maxDepth === "number" && options.maxDepth > 0 ? options.maxDepth : undefined;
+
     const rootPage = await client.pages.retrieve({ page_id: rootId });
     const rootTitle = extractTitleFromPage(rootPage) ?? "Untitled Root";
     const rootDirectoryName = sanitizeSegment(rootTitle, "Untitled Root");
-    const directories: string[] = [];
-    const queue: Array<{ id: string; pathSegments: string[] }> = [{ id: rootId, pathSegments: [] }];
+
+    const directorySet = new Set<string>();
+    const leafPages: LeafPageExport[] = [];
+    const queue: QueueItem[] = [{ id: rootId, pathSegments: [], isRoot: true, title: rootTitle }];
     const visited = new Set<string>();
 
     while (queue.length > 0) {
@@ -50,8 +71,23 @@ export async function buildNotionDirectoryPlan(options: NotionDirectoryPlanOptio
         visited.add(current.id);
 
         const childPages = await fetchChildPages(client, current.id);
-        if (current.pathSegments.length > 0 && isDirectoryNode(childPages)) {
-            directories.push(current.pathSegments.join("/"));
+        const hasChildren = isDirectoryNode(childPages);
+
+        if (hasChildren && current.pathSegments.length > 0) {
+            directorySet.add(current.pathSegments.join("/"));
+        } else if (!hasChildren) {
+            const relativeDir = current.pathSegments.slice(0, -1).join("/");
+            const fileBaseName =
+                current.pathSegments.at(-1) ?? sanitizeSegment(current.title ?? rootDirectoryName, "Untitled Page");
+            const fileName = ensureMarkdownExtension(fileBaseName);
+            const content = await renderPageMarkdown(renderer, current.id);
+            leafPages.push({
+                id: current.id,
+                title: current.title,
+                relativeDir,
+                fileName,
+                content,
+            });
         }
 
         for (const child of childPages) {
@@ -60,13 +96,19 @@ export async function buildNotionDirectoryPlan(options: NotionDirectoryPlanOptio
             if (effectiveMaxDepth && nextSegments.length > effectiveMaxDepth) {
                 continue;
             }
-            queue.push({ id: normalizePageId(child.id), pathSegments: nextSegments });
+            queue.push({
+                id: normalizePageId(child.id),
+                pathSegments: nextSegments,
+                isRoot: false,
+                title: child.title,
+            });
         }
     }
 
     return {
         rootDirectoryName,
-        childDirectories: Array.from(new Set(directories)),
+        childDirectories: Array.from(directorySet),
+        leafPages,
     };
 }
 
@@ -148,6 +190,36 @@ function sanitizeSegment(segment: string, fallback: string): string {
  */
 export function isDirectoryNode(childPages: ChildPageInfo[]): boolean {
     return childPages.length > 0;
+}
+
+/**
+ * 使用 notion-to-md 将页面内容转换为 Markdown 字符串。
+ *
+ * @param renderer NotionToMarkdown 实例
+ * @param pageId 页面 ID
+ * @returns Markdown 文本
+ */
+async function renderPageMarkdown(renderer: NotionToMarkdown, pageId: string): Promise<string> {
+    const blocks = await renderer.pageToMarkdown(pageId);
+    const markdownObject = renderer.toMarkdownString(blocks);
+    if (typeof markdownObject === "string") {
+        return markdownObject;
+    }
+
+    const lines = [markdownObject.parent, ...(markdownObject.children ?? [])].filter(
+        (line): line is string => typeof line === "string" && line.trim().length > 0,
+    );
+    return lines.join("\n");
+}
+
+/**
+ * 确保文件名包含 .md 扩展名。
+ *
+ * @param fileBaseName 原始文件名
+ * @returns 带扩展名的文件名
+ */
+function ensureMarkdownExtension(fileBaseName: string): string {
+    return fileBaseName.toLowerCase().endsWith(".md") ? fileBaseName : `${fileBaseName}.md`;
 }
 
 /**
