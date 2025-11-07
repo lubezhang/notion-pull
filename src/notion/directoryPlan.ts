@@ -50,13 +50,14 @@ export async function buildNotionDirectoryPlan(options: NotionDirectoryPlanOptio
         visited.add(current.id);
 
         const childPages = await fetchChildPages(client, current.id);
+        if (current.pathSegments.length > 0 && isDirectoryNode(childPages)) {
+            directories.push(current.pathSegments.join("/"));
+        }
+
         for (const child of childPages) {
             const sanitizedTitle = sanitizeSegment(child.title, "Untitled Page");
             const nextSegments = [...current.pathSegments, sanitizedTitle];
-            const relativePath = nextSegments.join("/");
-            directories.push(relativePath);
-
-            if (effectiveMaxDepth && nextSegments.length >= effectiveMaxDepth) {
+            if (effectiveMaxDepth && nextSegments.length > effectiveMaxDepth) {
                 continue;
             }
             queue.push({ id: normalizePageId(child.id), pathSegments: nextSegments });
@@ -137,6 +138,16 @@ function sanitizeSegment(segment: string, fallback: string): string {
         return fallback;
     }
     return sanitized;
+}
+
+/**
+ * 判断页面是否需要作为目录创建，依据是否存在子页面。
+ *
+ * @param childPages 当前页面的子页面列表
+ * @returns 若存在子页面则返回 true
+ */
+export function isDirectoryNode(childPages: ChildPageInfo[]): boolean {
+    return childPages.length > 0;
 }
 
 /**
