@@ -1,87 +1,32 @@
 import { ExportConfig } from "./config";
-import { createLogger, createModuleLogger } from "./logger";
-import { createNotionClient } from "./notion/client";
-import { createTraversalService } from "./notion/traversal";
-import { createMarkdownRenderer } from "./markdown/renderer";
-import { createAssetDownloader } from "./assets/downloader";
-import { createOutputWriter } from "./output/writer";
+import { createRootDirectory, ensureChildDirectories } from "./directory";
+import { buildNotionDirectoryPlan } from "./notion/directoryPlan";
 
+/**
+ * 目录创建入口：读取 Notion 页面结构并在本地创建对应的目录层级。
+ *
+ * @param config 标准化后的运行配置
+ */
 export async function runExport(config: ExportConfig): Promise<void> {
-    const baseLogger = createLogger("pipeline");
-    const logger = createModuleLogger(baseLogger, "pipeline");
-    const notion = createNotionClient({ token: config.token, proxy: config.proxy });
-    const traversal = createTraversalService({
-        notion,
-        logger: createModuleLogger(baseLogger, "traversal"),
-        concurrency: config.concurrency,
-    });
-    const renderer = createMarkdownRenderer({ logger: createModuleLogger(baseLogger, "renderer"), notion });
-    const downloader = createAssetDownloader({
-        logger: createModuleLogger(baseLogger, "assets"),
-        concurrency: config.downloadConcurrency,
-    });
-    const writer = createOutputWriter({
-        baseDir: config.outDir,
-        dryRun: config.dryRun,
-        force: config.force,
-        logger: createModuleLogger(baseLogger, "output"),
+    const plan = await buildNotionDirectoryPlan({
+        token: config.token,
+        rootPageId: config.rootPageId,
+        maxDepth: config.maxDepth,
     });
 
-    if (config.dryRun) {
-        logger.info({ dryRun: true }, "Dry run enabled: files will not be written");
-    }
-
-    logger.info(
-        {
-            rootPageId: config.rootPageId ?? "workspace",
-            outDir: config.outDir,
-            concurrency: config.concurrency,
-            downloadConcurrency: config.downloadConcurrency,
-            proxyConfigured: Boolean(config.proxy),
-        },
-        "Starting export pipeline",
+    const { rootPath, result: rootResult } = await createRootDirectory(
+        { outDir: config.outDir, dryRun: config.dryRun },
+        plan.rootDirectoryName,
     );
 
-    const stats = {
-        total: 0,
-        success: 0,
-        skipped: 0,
-        failed: 0,
-    };
+    const childResults = await ensureChildDirectories(rootPath, plan.childDirectories, config.dryRun);
+    const results = [rootResult, ...childResults];
 
-    await traversal.traverse(config.rootPageId, async (page) => {
-        stats.total += 1;
-        logger.info({ pageId: page.id, title: page.title }, "Processing page");
-
-        try {
-            const markdown = await renderer.renderPage(page);
-            const assets = config.dryRun ? [] : await downloader.collectAssets(page, markdown.assets);
-
-            await writer.writePage({
-                page,
-                markdown,
-                assets,
-            });
-            stats.success += 1;
-            logger.info({ pageId: page.id, title: page.title }, "Page exported successfully");
-        } catch (error) {
-            stats.failed += 1;
-            logger.error(
-                {
-                    err: error,
-                    pageId: page.id,
-                    title: page.title,
-                    reason: error instanceof Error ? error.message : String(error),
-                },
-                "Failed to export page",
-            );
-        }
-    });
-
-    const summary = {
-        ...stats,
-        skipped: stats.skipped,
-    };
-
-    logger.info(summary, "Export finished");
+    const message = config.dryRun ? "Dry Run: 即将创建的目录" : "已创建目录";
+    for (const result of results) {
+        console.info(
+            message,
+            result.relativePath === "." ? result.absolutePath : `${result.relativePath} -> ${result.absolutePath}`,
+        );
+    }
 }
