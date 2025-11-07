@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { isValidLogLevel, LogLevel } from "./logger";
 
 export interface ExportConfig {
     token: string;
@@ -7,6 +8,7 @@ export interface ExportConfig {
     outDir: string;
     dryRun: boolean;
     maxDepth?: number;
+    logLevel: LogLevel;
     configPath?: string;
 }
 
@@ -17,11 +19,13 @@ export interface ExportConfigInput {
     dryRun?: boolean;
     maxDepth?: number | string;
     config?: string;
+    logLevel?: string;
 }
 
-const DEFAULTS: Pick<ExportConfig, "outDir" | "dryRun"> = {
+const DEFAULTS: Pick<ExportConfig, "outDir" | "dryRun" | "logLevel"> = {
     outDir: "./export",
     dryRun: false,
+    logLevel: "info",
 };
 
 /**
@@ -36,6 +40,7 @@ export async function loadConfig(input: ExportConfigInput): Promise<ExportConfig
         token: process.env.NOTION_TOKEN,
         rootPageId: process.env.NOTION_ROOT_PAGE_ID ?? process.env.NOTION_ROOT,
         maxDepth: toNumber(process.env.NOTION_MAX_DEPTH),
+        logLevel: toLogLevel(process.env.LOG_LEVEL),
     };
 
     const merged: Partial<ExportConfig> = {
@@ -59,6 +64,7 @@ export async function loadConfig(input: ExportConfigInput): Promise<ExportConfig
         outDir: merged.outDir ?? DEFAULTS.outDir,
         dryRun: merged.dryRun ?? DEFAULTS.dryRun,
         maxDepth: merged.maxDepth,
+        logLevel: merged.logLevel ?? DEFAULTS.logLevel,
         configPath: input.config ? path.resolve(input.config) : undefined,
     };
 }
@@ -70,6 +76,7 @@ interface FileConfigRaw {
     outDir?: unknown;
     dryRun?: unknown;
     maxDepth?: unknown;
+    logLevel?: unknown;
 }
 
 /**
@@ -93,6 +100,7 @@ async function readConfigFile(configPath: string): Promise<Partial<ExportConfig>
         outDir: typeof parsed.outDir === "string" ? parsed.outDir : undefined,
         dryRun: typeof parsed.dryRun === "boolean" ? parsed.dryRun : undefined,
         maxDepth: toNumber(parsed.maxDepth),
+        logLevel: toLogLevel(parsed.logLevel),
     };
 }
 
@@ -109,6 +117,7 @@ function normalizeCliOptions(input: ExportConfigInput): Partial<ExportConfig> {
         outDir: input.outDir,
         dryRun: input.dryRun,
         maxDepth: toNumber(input.maxDepth),
+        logLevel: toLogLevel(input.logLevel),
     };
 }
 
@@ -125,6 +134,17 @@ function toNumber(value: number | string | undefined | unknown): number | undefi
     if (typeof value === "string") {
         const parsed = Number.parseInt(value, 10);
         return Number.isNaN(parsed) ? undefined : parsed;
+    }
+    return undefined;
+}
+
+function toLogLevel(value: unknown): LogLevel | undefined {
+    if (isValidLogLevel(value)) {
+        return value;
+    }
+    if (typeof value === "string") {
+        const lower = value.toLowerCase();
+        return isValidLogLevel(lower) ? lower : undefined;
     }
     return undefined;
 }

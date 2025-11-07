@@ -34,7 +34,8 @@
   "dependencies": {
     "@notionhq/client": "^5.3.0",
     "commander": "^14.0.2",
-    "notion-to-md": "^3.1.9"
+    "notion-to-md": "^3.1.9",
+    "undici": "^7.16.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

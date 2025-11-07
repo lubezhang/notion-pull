@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import type { Logger } from "./logger";
 
 export interface DirectoryCreationResult {
     absolutePath: string;
@@ -27,12 +28,16 @@ export interface RootDirectoryCreation {
 export async function createRootDirectory(
     options: DirectoryPlanOptions,
     rootDirectoryName: string,
+    logger: Logger,
 ): Promise<RootDirectoryCreation> {
     const baseDir = path.resolve(options.outDir);
     const rootPath = path.join(baseDir, rootDirectoryName);
 
     if (!options.dryRun) {
         await mkdir(rootPath, { recursive: true });
+        logger.info("已创建根目录", { rootPath });
+    } else {
+        logger.info("Dry Run: 计划创建根目录", { rootPath });
     }
 
     return {
@@ -57,6 +62,7 @@ export async function ensureChildDirectories(
     rootPath: string,
     directories: string[],
     dryRun: boolean,
+    logger: Logger,
 ): Promise<DirectoryCreationResult[]> {
     const normalizedDirs = directories.map((dir) => dir.trim()).filter((dir) => dir.length > 0);
     const uniqueDirs = Array.from(new Set(normalizedDirs));
@@ -76,6 +82,9 @@ export async function ensureChildDirectories(
         const relativePath = path.relative(rootPath, target) || ".";
         if (!dryRun) {
             await mkdir(target, { recursive: true });
+            logger.info("已创建目录", { path: target });
+        } else {
+            logger.info("Dry Run: 计划创建目录", { path: target });
         }
         results.push({
             absolutePath: target,

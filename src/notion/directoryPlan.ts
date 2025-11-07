@@ -6,11 +6,22 @@ import type {
     PartialPageObjectResponse,
 } from "@notionhq/client/build/src/api-endpoints";
 import { NotionToMarkdown } from "notion-to-md";
+import type { Logger } from "../logger";
 
 export interface NotionDirectoryPlanOptions {
     token: string;
     rootPageId: string;
     maxDepth?: number;
+    logger?: Logger;
+    onRootResolved?: (rootDirectoryName: string) => Promise<void> | void;
+    onLeafPage?: (page: LeafPageExport) => Promise<void> | void;
+}
+
+export interface PageAssetPlan {
+    id: string;
+    sourceUrl: string;
+    localFileName: string;
+    caption?: string;
 }
 
 export interface LeafPageExport {
@@ -19,6 +30,7 @@ export interface LeafPageExport {
     relativeDir: string;
     fileName: string;
     content: string;
+    assets: PageAssetPlan[];
 }
 
 export interface NotionDirectoryPlan {
@@ -30,6 +42,12 @@ export interface NotionDirectoryPlan {
 interface ChildPageInfo {
     id: string;
     title: string;
+}
+
+interface RawAssetPlan {
+    id: string;
+    sourceUrl: string;
+    caption?: string;
 }
 
 interface QueueItem {
@@ -46,14 +64,18 @@ interface QueueItem {
  * @returns 根目录名称、需要创建的子目录以及 Markdown 页面列表
  */
 export async function buildNotionDirectoryPlan(options: NotionDirectoryPlanOptions): Promise<NotionDirectoryPlan> {
+    const logger = options.logger;
     const client = new Client({ auth: options.token });
     const renderer = new NotionToMarkdown({ notionClient: client });
     const rootId = normalizePageId(options.rootPageId);
     const effectiveMaxDepth = typeof options.maxDepth === "number" && options.maxDepth > 0 ? options.maxDepth : undefined;
+    logger?.info("开始构建 Notion 目录计划", { rootId, maxDepth: effectiveMaxDepth ?? "unlimited" });
 
     const rootPage = await client.pages.retrieve({ page_id: rootId });
     const rootTitle = extractTitleFromPage(rootPage) ?? "Untitled Root";
     const rootDirectoryName = sanitizeSegment(rootTitle, "Untitled Root");
+    await options.onRootResolved?.(rootDirectoryName);
+    logger?.debug("根页面信息", { rootDirectoryName });
 
     const directorySet = new Set<string>();
     const leafPages: LeafPageExport[] = [];
@@ -69,6 +91,7 @@ export async function buildNotionDirectoryPlan(options: NotionDirectoryPlanOptio
             continue;
         }
         visited.add(current.id);
+        logger?.debug("处理页面", { pageId: current.id, depth: current.pathSegments.length });
 
         const childPages = await fetchChildPages(client, current.id);
         const hasChildren = isDirectoryNode(childPages);
@@ -81,12 +104,26 @@ export async function buildNotionDirectoryPlan(options: NotionDirectoryPlanOptio
                 current.pathSegments.at(-1) ?? sanitizeSegment(current.title ?? rootDirectoryName, "Untitled Page");
             const fileName = ensureMarkdownExtension(fileBaseName);
             const content = await renderPageMarkdown(renderer, current.id);
-            leafPages.push({
+            const rawAssets = await collectPageAssets(client, current.id, logger?.child("assets"));
+            const assets = assignAssetFileNames(rawAssets);
+            const rewrittenContent = rewriteAssetReferences(content, assets);
+            const pagePlan: LeafPageExport = {
                 id: current.id,
                 title: current.title,
                 relativeDir,
                 fileName,
-                content,
+                content: rewrittenContent,
+                assets,
+            };
+            if (options.onLeafPage) {
+                await options.onLeafPage(pagePlan);
+            } else {
+                leafPages.push(pagePlan);
+            }
+            logger?.info("生成叶子页面计划", {
+                pageId: current.id,
+                filePath: relativeDir ? `${relativeDir}/${fileName}` : fileName,
+                attachments: assets.length,
             });
         }
 
@@ -102,8 +139,14 @@ export async function buildNotionDirectoryPlan(options: NotionDirectoryPlanOptio
                 isRoot: false,
                 title: child.title,
             });
+            logger?.debug("加入子页面队列", { pageId: child.id, depth: nextSegments.length });
         }
     }
+
+    logger?.info("目录计划构建完成", {
+        directories: directorySet.size,
+        pages: leafPages.length,
+    });
 
     return {
         rootDirectoryName,
@@ -210,6 +253,176 @@ async function renderPageMarkdown(renderer: NotionToMarkdown, pageId: string): P
         (line): line is string => typeof line === "string" && line.trim().length > 0,
     );
     return lines.join("\n");
+}
+
+/**
+ * 遍历页面所有块并提取附件资源信息。
+ *
+ * @param client Notion 客户端
+ * @param pageId 页面 ID
+ * @returns 资源列表
+ */
+async function collectPageAssets(client: Client, pageId: string, logger?: Logger): Promise<RawAssetPlan[]> {
+    const assets: RawAssetPlan[] = [];
+    const visited = new Set<string>();
+    logger?.debug("开始收集页面附件", { pageId });
+    await walkBlocks(client, pageId, assets, visited, logger);
+    logger?.info("页面附件收集完成", { pageId, count: assets.length });
+    return assets;
+}
+
+async function walkBlocks(
+    client: Client,
+    blockId: string,
+    assets: RawAssetPlan[],
+    visited: Set<string>,
+    logger?: Logger,
+): Promise<void> {
+    let cursor: string | undefined;
+    do {
+        const response: ListBlockChildrenResponse = await client.blocks.children.list({
+            block_id: blockId,
+            page_size: 100,
+            start_cursor: cursor,
+        });
+
+        for (const block of response.results as BlockObjectResponse[]) {
+            if (visited.has(block.id)) {
+                continue;
+            }
+            visited.add(block.id);
+
+            const asset = extractAssetFromBlock(block);
+            if (asset) {
+                assets.push(asset);
+                logger?.debug("发现附件", { blockId: block.id, url: asset.sourceUrl });
+            }
+
+            if (block.has_children) {
+                await walkBlocks(client, block.id, assets, visited, logger);
+            }
+        }
+
+        cursor = response.has_more ? response.next_cursor ?? undefined : undefined;
+    } while (cursor);
+}
+
+function extractAssetFromBlock(block: BlockObjectResponse): RawAssetPlan | undefined {
+    switch (block.type) {
+        case "image":
+            return normalizeAsset(block.id, block.image?.type === "file" ? block.image.file?.url : block.image?.external?.url, {
+                caption: extractRichTextPlain(block.image?.caption ?? []),
+            });
+        case "file":
+            return normalizeAsset(block.id, block.file?.type === "file" ? block.file.file?.url : block.file?.external?.url, {
+                caption: extractRichTextPlain(block.file?.caption ?? []),
+            });
+        case "pdf":
+            return normalizeAsset(block.id, block.pdf?.type === "file" ? block.pdf.file?.url : block.pdf?.external?.url, {
+                caption: extractRichTextPlain(block.pdf?.caption ?? []),
+            });
+        case "audio":
+            return normalizeAsset(block.id, block.audio?.type === "file" ? block.audio.file?.url : block.audio?.external?.url, {
+                caption: extractRichTextPlain(block.audio?.caption ?? []),
+            });
+        case "video":
+            return normalizeAsset(block.id, block.video?.type === "file" ? block.video.file?.url : block.video?.external?.url, {
+                caption: extractRichTextPlain(block.video?.caption ?? []),
+            });
+        default:
+            return undefined;
+    }
+}
+
+function normalizeAsset(
+    id: string,
+    sourceUrl: string | undefined,
+    meta: { caption?: string },
+): RawAssetPlan | undefined {
+    if (!sourceUrl) {
+        return undefined;
+    }
+    return {
+        id,
+        sourceUrl,
+        caption: meta.caption,
+    };
+}
+
+function assignAssetFileNames(assets: RawAssetPlan[]): PageAssetPlan[] {
+    const usedNames = new Set<string>();
+    return assets.map((asset, index) => {
+        const extractedName = extractFileNameFromUrl(asset.sourceUrl) ?? `attachment-${index + 1}`;
+        const localFileName = ensureUniqueFileName(extractedName, usedNames);
+        return {
+            ...asset,
+            localFileName,
+        };
+    });
+}
+
+function rewriteAssetReferences(content: string, assets: PageAssetPlan[]): string {
+    let updated = content;
+    for (const asset of assets) {
+        const localPath = `./attachments/${asset.localFileName}`;
+        updated = updated.split(asset.sourceUrl).join(localPath);
+    }
+    return updated;
+}
+
+function extractFileNameFromUrl(url: string): string | undefined {
+    try {
+        const parsed = new URL(url);
+        const pathname = parsed.pathname.split("/").filter(Boolean);
+        const rawName = pathname.at(-1);
+        if (!rawName) {
+            return undefined;
+        }
+        return rawName.split("?")[0];
+    } catch {
+        return undefined;
+    }
+}
+
+function ensureUniqueFileName(fileName: string, usedNames: Set<string>): string {
+    const sanitized = sanitizeFileName(fileName, "attachment");
+    if (!usedNames.has(sanitized)) {
+        usedNames.add(sanitized);
+        return sanitized;
+    }
+    const dotIndex = sanitized.lastIndexOf(".");
+    const base = dotIndex > 0 ? sanitized.slice(0, dotIndex) : sanitized;
+    const ext = dotIndex > 0 ? sanitized.slice(dotIndex) : "";
+    let counter = 1;
+    let candidate = `${base}-${counter}${ext}`;
+    while (usedNames.has(candidate)) {
+        counter += 1;
+        candidate = `${base}-${counter}${ext}`;
+    }
+    usedNames.add(candidate);
+    return candidate;
+}
+
+function sanitizeFileName(fileName: string, fallback: string): string {
+    const normalized = fileName.trim();
+    if (normalized.length === 0) {
+        return `${fallback}.bin`;
+    }
+    const dotIndex = normalized.lastIndexOf(".");
+    const base = dotIndex > 0 ? normalized.slice(0, dotIndex) : normalized;
+    const ext = dotIndex > 0 ? normalized.slice(dotIndex) : "";
+    const sanitizedBase = sanitizeSegment(base, fallback);
+    const safeExt = ext.replace(/[^A-Za-z0-9.]+/g, "");
+    const finalExt = safeExt.length > 0 ? safeExt : ".bin";
+    if (sanitizedBase.length === 0) {
+        return `${fallback}${finalExt}`;
+    }
+    return `${sanitizedBase}${finalExt}`;
+}
+
+function extractRichTextPlain(richText: Array<{ plain_text?: string }>): string | undefined {
+    const text = richText.map((item) => item.plain_text ?? "").join("").trim();
+    return text.length > 0 ? text : undefined;
 }
 
 /**

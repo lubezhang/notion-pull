@@ -13,6 +13,7 @@ program
     .option("-o, --out-dir <path>", "输出目录", "./export")
     .option("--max-depth <number>", "遍历子页面的最大层级，默认不限制", (value) => parseInt(value, 10))
     .option("--dry-run", "仅打印计划的目录而不创建", false)
+    .option("--log-level <level>", "日志级别，可选 error|warn|info|debug", "info")
     .option("--config <path>", "JSON 配置文件路径")
     .showHelpAfterError();
 

@@ -7,6 +7,7 @@
 - 自动清洗页面标题中的非法字符，生成可用的目录名称。
 - 优先创建与根页面同名的根目录，所有内容都写入该目录下。
 - 对没有子页面的笔记使用 `notion-to-md` 转为 Markdown 文件并落盘。
+- 自动提取文中的图片、文件、音视频等附件，下载到页面同级 `attachments/` 目录并重写引用路径，同时保证文件名唯一。
 - Dry Run 模式可在 CI 中预览将要创建的目录列表。
 - CLI、环境变量与 JSON 配置文件可灵活组合。
 
@@ -37,6 +38,7 @@ pnpm dev -- --token $NOTION_TOKEN --root <根页面ID> --max-depth 2
 | `--out-dir, -o` | 输出目录，支持相对路径 | `./export` |
 | `--max-depth` | 遍历子页面最大层级，默认不限 | - |
 | `--dry-run` | 仅打印计划不创建 | `false` |
+| `--log-level` | 日志级别，`error/warn/info/debug` | `info` |
 | `--config` | JSON 配置文件路径 | - |
 
 ## 配置文件示例
@@ -47,7 +49,8 @@ pnpm dev -- --token $NOTION_TOKEN --root <根页面ID> --max-depth 2
     "rootPageId": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     "outDir": "./backup",
     "dryRun": false,
-    "maxDepth": 2
+    "maxDepth": 2,
+    "logLevel": "info"
 }
 ```
 
