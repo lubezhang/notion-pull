@@ -1,107 +1,150 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { isValidLogLevel, LogLevel } from "./logger";
 
 export interface ExportConfig {
-  token: string;
-  rootPageId?: string;
-  outDir: string;
-  concurrency: number;
-  downloadConcurrency: number;
-  force: boolean;
-  dryRun: boolean;
-  configPath?: string;
-  proxy?: string;
+    token: string;
+    rootPageId: string;
+    outDir: string;
+    dryRun: boolean;
+    maxDepth?: number;
+    logLevel: LogLevel;
+    configPath?: string;
 }
 
 export interface ExportConfigInput {
-  token?: string;
-  root?: string;
-  outDir?: string;
-  concurrency?: number | string;
-  downloadConcurrency?: number | string;
-  force?: boolean;
-  dryRun?: boolean;
-  config?: string;
-  proxy?: string;
+    token?: string;
+    root?: string;
+    outDir?: string;
+    dryRun?: boolean;
+    maxDepth?: number | string;
+    config?: string;
+    logLevel?: string;
 }
 
-const DEFAULTS: Omit<ExportConfig, "token"> = {
-  outDir: "./export",
-  concurrency: 4,
-  downloadConcurrency: 4,
-  force: false,
-  dryRun: false,
+const DEFAULTS: Pick<ExportConfig, "outDir" | "dryRun" | "logLevel"> = {
+    outDir: "./export",
+    dryRun: false,
+    logLevel: "info",
 };
 
+/**
+ * 加载最终运行配置，按 CLI > 配置文件 > 环境变量 > 默认值 合并。
+ *
+ * @param input CLI 解析得到的参数
+ * @returns 标准化后的导出配置
+ */
 export async function loadConfig(input: ExportConfigInput): Promise<ExportConfig> {
-  const fileConfig = input.config ? await readConfigFile(input.config) : {};
-  const envConfig: Partial<ExportConfig> = {
-    token: process.env.NOTION_TOKEN,
-    rootPageId: process.env.NOTION_ROOT_PAGE_ID ?? process.env.NOTION_ROOT,
-    proxy: process.env.NOTION_PROXY ?? process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY,
-  };
+    const fileConfig = input.config ? await readConfigFile(input.config) : {};
+    const envConfig: Partial<ExportConfig> = {
+        token: process.env.NOTION_TOKEN,
+        rootPageId: process.env.NOTION_ROOT_PAGE_ID ?? process.env.NOTION_ROOT,
+        maxDepth: toNumber(process.env.NOTION_MAX_DEPTH),
+        logLevel: toLogLevel(process.env.LOG_LEVEL),
+    };
 
-  const merged = {
-    ...DEFAULTS,
-    ...fileConfig,
-    ...envConfig,
-    ...normalizeCliOptions(input),
-  };
+    const merged: Partial<ExportConfig> = {
+        ...DEFAULTS,
+        ...fileConfig,
+        ...envConfig,
+        ...normalizeCliOptions(input),
+    };
 
-  if (!merged.token) {
-    throw new Error("Notion token not provided. Use --token or set NOTION_TOKEN.");
-  }
+    if (!merged.token) {
+        throw new Error("请通过 --token 或 NOTION_TOKEN 提供 Notion 集成 Token");
+    }
 
-  return {
-    token: merged.token,
-    rootPageId: merged.rootPageId,
-    outDir: merged.outDir ?? DEFAULTS.outDir,
-    concurrency: merged.concurrency ?? DEFAULTS.concurrency,
-    downloadConcurrency: merged.downloadConcurrency ?? DEFAULTS.downloadConcurrency,
-    force: merged.force ?? DEFAULTS.force,
-    dryRun: merged.dryRun ?? DEFAULTS.dryRun,
-    configPath: input.config ? path.resolve(input.config) : undefined,
-    proxy: merged.proxy,
-  };
+    if (!merged.rootPageId) {
+        throw new Error("请提供根页面 ID，可使用 --root 或 NOTION_ROOT_PAGE_ID");
+    }
+
+    return {
+        token: merged.token,
+        rootPageId: merged.rootPageId,
+        outDir: merged.outDir ?? DEFAULTS.outDir,
+        dryRun: merged.dryRun ?? DEFAULTS.dryRun,
+        maxDepth: merged.maxDepth,
+        logLevel: merged.logLevel ?? DEFAULTS.logLevel,
+        configPath: input.config ? path.resolve(input.config) : undefined,
+    };
 }
 
-interface FileConfigRaw extends Partial<ExportConfig> {
-  root?: string;
+interface FileConfigRaw {
+    token?: unknown;
+    rootPageId?: unknown;
+    root?: unknown;
+    outDir?: unknown;
+    dryRun?: unknown;
+    maxDepth?: unknown;
+    logLevel?: unknown;
 }
 
+/**
+ * 读取 JSON 配置文件并进行基本字段校验。
+ *
+ * @param configPath JSON 配置文件路径
+ * @returns 配置片段
+ */
 async function readConfigFile(configPath: string): Promise<Partial<ExportConfig>> {
-  const resolvedPath = path.resolve(configPath);
-  const data = await readFile(resolvedPath, "utf8");
-  const parsed = JSON.parse(data) as FileConfigRaw;
-  const normalized: Partial<ExportConfig> = {
-    ...parsed,
-  };
-  if (typeof parsed.root === "string" && typeof parsed.rootPageId !== "string") {
-    normalized.rootPageId = parsed.root;
-  }
-  return normalized;
+    const resolvedPath = path.resolve(configPath);
+    const data = await readFile(resolvedPath, "utf8");
+    const parsed = JSON.parse(data) as FileConfigRaw;
+    return {
+        token: typeof parsed.token === "string" ? parsed.token : undefined,
+        rootPageId:
+            typeof parsed.rootPageId === "string"
+                ? parsed.rootPageId
+                : typeof parsed.root === "string"
+                    ? parsed.root
+                    : undefined,
+        outDir: typeof parsed.outDir === "string" ? parsed.outDir : undefined,
+        dryRun: typeof parsed.dryRun === "boolean" ? parsed.dryRun : undefined,
+        maxDepth: toNumber(parsed.maxDepth),
+        logLevel: toLogLevel(parsed.logLevel),
+    };
 }
 
+/**
+ * 对 CLI 层面的输入做类型归一化。
+ *
+ * @param input CLI 参数
+ * @returns 归一化后的部分配置
+ */
 function normalizeCliOptions(input: ExportConfigInput): Partial<ExportConfig> {
-  return {
-    token: input.token,
-    rootPageId: input.root,
-    outDir: input.outDir,
-    concurrency: toNumber(input.concurrency),
-    downloadConcurrency: toNumber(input.downloadConcurrency),
-    force: input.force,
-    dryRun: input.dryRun,
-    proxy: input.proxy,
-  };
+    return {
+        token: input.token,
+        rootPageId: input.root,
+        outDir: input.outDir,
+        dryRun: input.dryRun,
+        maxDepth: toNumber(input.maxDepth),
+        logLevel: toLogLevel(input.logLevel),
+    };
 }
 
-function toNumber(value: number | string | undefined): number | undefined {
-  if (typeof value === "number") {
-    return Number.isNaN(value) ? undefined : value;
-  }
-  if (typeof value === "string") {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isNaN(parsed) ? undefined : parsed;
-  }
-  return undefined;
+/**
+ * 将字符串或数字参数转换为数字，无法解析时返回 undefined。
+ *
+ * @param value 待转换的值
+ * @returns 解析成功的数字或 undefined
+ */
+function toNumber(value: number | string | undefined | unknown): number | undefined {
+    if (typeof value === "number") {
+        return Number.isNaN(value) ? undefined : value;
+    }
+    if (typeof value === "string") {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isNaN(parsed) ? undefined : parsed;
+    }
+    return undefined;
+}
+
+function toLogLevel(value: unknown): LogLevel | undefined {
+    if (isValidLogLevel(value)) {
+        return value;
+    }
+    if (typeof value === "string") {
+        const lower = value.toLowerCase();
+        return isValidLogLevel(lower) ? lower : undefined;
+    }
+    return undefined;
 }
