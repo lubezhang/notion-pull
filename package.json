@@ -1,7 +1,7 @@
 {
   "name": "notion-pull",
   "version": "1.0.0",
-  "description": "CLI tool to initialize local directories for note exports.",
+  "description": "A CLI tool for exporting Notion notes to Markdown format..",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
