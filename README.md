@@ -18,9 +18,9 @@ pnpm install
 
 ## 快速开始
 1. 在 Notion 中创建集成并获取 Token，确保该集成已被授权访问需要导出的页面。
-2. 将 Token 写入环境变量：
+2. 将 Token 写入环境变量（请使用你自己的令牌值，不要在仓库中提交真实令牌）：
    ```bash
-   export NOTION_TOKEN="secret_xxx"
+   export NOTION_TOKEN="<YOUR_NOTION_TOKEN>"
    ```
 3. 运行导出命令（默认输出到 `./export`）：
    ```bash
@@ -50,7 +50,7 @@ pnpm install
 
 ```json
 {
-    "token": "secret_xxx",
+    "token": "<YOUR_NOTION_TOKEN>",
     "rootPageId": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     "outDir": "./export",
     "concurrency": 6,
@@ -65,8 +65,8 @@ pnpm install
 
 ## 示例
 ```bash
-# 导出根页面及其子页面
-pnpm dev -- -t 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 --root "Coze-f65e00f2dc54485ca21278cc119dbc23" --out-dir "./backup"
+# 导出根页面及其子页面（示例：通过环境变量传入令牌）
+pnpm dev -- -t "$NOTION_TOKEN" --root "Coze-f65e00f2dc54485ca21278cc119dbc23" --out-dir "./backup"
 
 ```
 
