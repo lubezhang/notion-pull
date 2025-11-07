@@ -1,0 +1,56 @@
+{
+  "name": "notion-pull",
+  "version": "1.0.0",
+  "description": "CLI tool to export Notion workspace content into Markdown files.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "notion-pull": "./dist/cli.js"
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "lint": "eslint \"src/**/*.ts\"",
+    "start": "node ./dist/cli.js",
+    "test": "echo \"No tests configured\""
+  },
+  "keywords": [
+    "notion",
+    "markdown",
+    "export"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@notionhq/client": "^5.3.0",
+    "axios": "^1.13.2",
+    "commander": "^14.0.2",
+    "notion-to-md": "^3.1.9",
+    "p-limit": "^7.2.0",
+    "pino": "^10.1.0",
+    "undici": "^7.16.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.3",
+    "@typescript-eslint/parser": "^8.46.3",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.5.0",
+    "prettier": "^3.6.2",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
