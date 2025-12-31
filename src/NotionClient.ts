@@ -237,19 +237,20 @@ export default class NotionClient {
      * @returns 页面标题
      */
     public getPageTitle(page: PageOrDatabase): string {
-        if (!isFullPage(page)) {
-            return "Untitled";
-        }
-
-        // 处理数据库类型
-        if ("title" in page && Array.isArray(page.title)) {
+        // 先检查是否是 Database 对象（Database 对象有 object 和 title 属性）
+        if ("object" in page && page.object === "database" && "title" in page && Array.isArray(page.title)) {
             const titleText = page.title
                 .map((text) => ("plain_text" in text ? text.plain_text : ""))
                 .join("");
             return titleText || "Untitled";
         }
 
-        // 处理页面类型
+        // 检查是否是完整的 Page 对象
+        if (!isFullPage(page)) {
+            return "Untitled";
+        }
+
+        // 处理页面类型 - 从 properties 中查找 title 类型的属性
         if ("properties" in page) {
             for (const key in page.properties) {
                 const property = page.properties[key];
