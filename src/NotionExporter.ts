@@ -1,4 +1,4 @@
-import NotionClient from "./NotionClient.js";
+import NotionClient, { propertiesToMarkdown, databaseToMarkdownTable } from "./NotionClient.js";
 import NotionToMarkdown from "./NotionToMarkdown.js";
 import FileDownloader from "./FileDownloader.js";
 import { mkdir, writeFile } from "fs/promises";
@@ -84,8 +84,17 @@ export default class NotionExporter {
             // 转换为 Markdown
             let markdown = await this.converter.pageToMarkdown(pageId);
 
+            // 如果内容为空,尝试从页面属性中生成内容
+            if (!markdown || markdown.trim() === "") {
+                const propertiesMarkdown = propertiesToMarkdown(page);
+                if (propertiesMarkdown) {
+                    console.log(`${indent}  ℹ️  页面内容块为空,导出页面属性`);
+                    markdown = propertiesMarkdown;
+                }
+            }
+
             // 检查是否有内容
-            if (markdown === undefined || markdown === null) {
+            if (markdown === undefined || markdown === null || markdown.trim() === "") {
                 console.warn(`${indent}  ⚠️  页面内容为空,跳过写入文件`);
                 // 仍然继续处理子页面
             } else {
@@ -137,11 +146,97 @@ export default class NotionExporter {
 
                 // 递归导出子页面
                 for (const childPage of childPages) {
-                    await this.exportPageRecursive(childPage.id, subDir, downloadMedia, attachmentsDir, depth + 1);
+                    // 根据类型区分处理页面和数据库
+                    if (childPage.type === "database") {
+                        await this.exportDatabaseRecursive(childPage.id, subDir, downloadMedia, attachmentsDir, depth + 1);
+                    } else {
+                        await this.exportPageRecursive(childPage.id, subDir, downloadMedia, attachmentsDir, depth + 1);
+                    }
                 }
             }
         } catch (error) {
             console.error(`${indent}❌ 导出失败 (${pageId}):`, error instanceof Error ? error.message : String(error));
+        }
+    }
+
+    /**
+     * 递归导出数据库(导出为 Markdown 表格)
+     * @param databaseId - 数据库 ID
+     * @param currentDir - 当前输出目录
+     * @param downloadMedia - 是否下载图片和文件
+     * @param attachmentsDir - 附件目录名称
+     * @param depth - 当前递归深度(用于日志缩进)
+     */
+    private async exportDatabaseRecursive(
+        databaseId: string,
+        currentDir: string,
+        downloadMedia: boolean = false,
+        attachmentsDir: string = "attachments",
+        depth: number = 0
+    ): Promise<void> {
+        const indent = "  ".repeat(depth);
+
+        try {
+            // 获取数据库信息
+            const database = await this.notionClient.getPageOrDatabase(databaseId, "database");
+            const title = this.notionClient.getPageTitle(database);
+            const safeTitle = this.sanitizeFileName(title || "Untitled Database");
+
+            console.log(`${indent}🗄️  导出数据库: ${safeTitle}`);
+
+            // 查询数据库中的所有页面
+            const pages = await this.notionClient.getClient().request<{ results: any[] }>({
+                path: `databases/${databaseId}/query`,
+                method: "post",
+            });
+
+            if (pages.results && pages.results.length > 0) {
+                console.log(`${indent}  └─ 发现 ${pages.results.length} 个数据库条目,导出为表格`);
+
+                // 将数据库转换为 Markdown 表格
+                const tableMarkdown = databaseToMarkdownTable(pages.results, safeTitle);
+
+                // 写入表格文件
+                const filePath = join(currentDir, `${safeTitle}.md`);
+                await writeFile(filePath, tableMarkdown, "utf-8");
+
+                // 导出每个数据库条目的详细页面内容(如果有内容块或子页面)
+                const detailsDir = join(currentDir, `${safeTitle}_详情`);
+                let hasDetails = false;
+
+                for (const page of pages.results) {
+                    if ("id" in page) {
+                        // 检查页面是否有内容块或子页面
+                        const pageBlocks = await this.notionClient.getClient().blocks.children.list({
+                            block_id: page.id,
+                        });
+
+                        const childPages = await this.notionClient.getChildPages(page.id);
+
+                        // 只有当页面有内容块或子页面时才创建详情目录并导出
+                        if (pageBlocks.results.length > 0 || childPages.length > 0) {
+                            if (!hasDetails) {
+                                await mkdir(detailsDir, { recursive: true });
+                                hasDetails = true;
+                            }
+                            await this.exportPageRecursive(page.id, detailsDir, downloadMedia, attachmentsDir, depth + 1);
+                        }
+                    }
+                }
+
+                if (hasDetails) {
+                    console.log(`${indent}  └─ 详细内容已导出到: ${safeTitle}_详情/`);
+                }
+            } else {
+                console.log(`${indent}  └─ 数据库为空`);
+
+                // 即使数据库为空,也创建一个文件
+                const emptyTableMarkdown = databaseToMarkdownTable([], safeTitle);
+                const filePath = join(currentDir, `${safeTitle}.md`);
+                await writeFile(filePath, emptyTableMarkdown, "utf-8");
+            }
+        } catch (error) {
+            console.error(`${indent}❌ 导出数据库失败 (${databaseId}):`, error instanceof Error ? error.message : String(error));
         }
     }
 
