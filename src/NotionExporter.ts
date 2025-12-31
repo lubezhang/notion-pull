@@ -66,9 +66,15 @@ export default class NotionExporter {
             // 转换为 Markdown
             const markdown = await this.converter.pageToMarkdown(pageId);
 
-            // 写入文件
-            const filePath = join(currentDir, `${safeTitle}.md`);
-            await writeFile(filePath, markdown, "utf-8");
+            // 检查是否有内容
+            if (markdown === undefined || markdown === null) {
+                console.warn(`${indent}  ⚠️  页面内容为空,跳过写入文件`);
+                // 仍然继续处理子页面
+            } else {
+                // 写入文件
+                const filePath = join(currentDir, `${safeTitle}.md`);
+                await writeFile(filePath, markdown, "utf-8");
+            }
 
             // 获取子页面
             const childPages = await this.notionClient.getChildPages(pageId);
