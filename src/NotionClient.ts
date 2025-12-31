@@ -156,9 +156,21 @@ export function databaseToMarkdownTable(pages: PageOrDatabase[], databaseName: s
         return `# ${databaseName}\n\n_无法读取数据库结构_\n`;
     }
 
-    // 提取所有属性名称作为列标题
+    // 提取所有属性名称作为列标题，并按照合理的顺序排列
     const properties = firstFullPage.properties;
-    const columnNames = Object.keys(properties);
+    const allColumnNames = Object.keys(properties);
+
+    // 将 title 类型的属性排在最前面，其他属性保持原有顺序
+    const titleColumns = allColumnNames.filter(name => {
+        const prop = properties[name];
+        return prop && "type" in prop && prop.type === "title";
+    });
+    const otherColumns = allColumnNames.filter(name => {
+        const prop = properties[name];
+        return !prop || !("type" in prop) || prop.type !== "title";
+    });
+
+    const columnNames = [...titleColumns, ...otherColumns];
 
     // 构建表格标题行
     const headerRow = `| ${columnNames.join(" | ")} |`;
