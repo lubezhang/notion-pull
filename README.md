@@ -6,8 +6,9 @@
 
 - **递归导出**: 自动导出页面及其所有子页面,保持原有层级结构
 - **内容隔离**: 每个页面的 Markdown 文件只包含该页面自身的内容,不包含子页面内容
+- **媒体文件下载**: 可选下载图片和附件文件到本地,并自动替换 Markdown 中的链接
 - **Markdown 转换**: 使用 `notion-to-md` 将 Notion 页面转换为标准 Markdown 格式
-- **智能文件命名**: 自动清理页面标题中的非法字符,生成��全的文件名
+- **智能文件命名**: 自动清理页面标题中的非法字符,生成安全的文件名
 - **目录结构映射**: 子页面会创建对应的子目录,保持 Notion 中的组织结构
 - **完整的 Notion API 支持**: 支持页面(Page)和数据库(Database)类型
 
@@ -82,6 +83,8 @@ notion-pull export [pageId] [options]
 **选项:**
 
 - `-o, --output <dir>` - 输出目录 (默认: `./notion-export`)
+- `-d, --download-media` - 下载图片和文件到本地 (默认: `false`)
+- `-a, --attachments-dir <name>` - 附件目录名称 (默认: `attachments`)
 
 **示例:**
 
@@ -92,11 +95,19 @@ notion-pull export
 # 指定页面 ID 和输出目录
 notion-pull export abc123def456 --output ./my-backup
 
+# 导出并下载所有图片和文件
+notion-pull export --download-media
+
+# 导出并下载文件到自定义附件目录
+notion-pull export --download-media --attachments-dir media
+
 # 导出到自定义目录
 notion-pull export --output ~/Documents/notion-backup
 ```
 
 ## 输出结构示例
+
+### 基本导出（不下载媒体文件）
 
 假设你的 Notion 结构如下:
 
@@ -126,6 +137,35 @@ notion-export/
     └── 工作日志.md
 ```
 
+### 启用媒体文件下载后的结构
+
+使用 `--download-media` 选项时:
+
+```
+notion-export/
+├── 我的知识库.md
+└── 我的知识库/
+    ├── attachments/           # 媒体文件目录
+    │   ├── image1_1234567.png
+    │   ├── diagram_1234568.jpg
+    │   └── document_1234569.pdf
+    ├── 编程笔记.md
+    ├── 编程笔记/
+    │   ├── attachments/       # 每个目录都有独立的附件文件夹
+    │   │   └── code_1234570.png
+    │   ├── JavaScript.md
+    │   └── Python.md
+    ├── 读书笔记.md
+    ├── 读书笔记/
+    │   └── 技术类.md
+    └── 工作日志.md
+```
+
+**说明:**
+- 图片和文件会下载到每个笔记所在目录的 `attachments/` 子目录
+- Markdown 文件中的链接会自动替换为相对路径,如: `![图片](attachments/image_1234567.png)`
+- 支持的文件类型包括: 图片(PNG, JPG等)、PDF、Office文档、压缩包、音视频等
+
 ## 开发命令
 
 - `pnpm dev` - 使用 tsx 直接运行源码
@@ -141,7 +181,8 @@ src/
 ├── cli.ts              # CLI 入口和命令定义
 ├── NotionClient.ts     # Notion API 客户端封装
 ├── NotionToMarkdown.ts # Markdown 转换器
-└── NotionExporter.ts   # 导出器主逻辑
+├── NotionExporter.ts   # 导出器主逻辑
+└── FileDownloader.ts   # 文件下载管理器
 ```
 
 ## 技术栈
@@ -149,6 +190,7 @@ src/
 - **@notionhq/client** - Notion 官方 API 客户端
 - **notion-to-md** - Notion 块转 Markdown 转换器
 - **commander** - CLI 框架
+- **undici** - 高性能 HTTP 客户端 (用于文件下载)
 - **TypeScript** - 类型安全
 
 ## 注意事项
@@ -162,6 +204,12 @@ src/
 2. **速率限制**: Notion API 有速率限制,导出大量页面时可能需要一些时间
 
 3. **文件名处理**: 特殊字符(如 `<>:"/\|?*`)会被替换为下划线
+
+4. **媒体文件下载**:
+   - Notion 中的图片和文件 URL 有时效性,建议使用 `--download-media` 选项将其保存到本地
+   - 下载失败的文件会在日志中标记,但不会中断导出流程
+   - 文件名会添加时间戳后缀以避免冲突
+   - 支持的文件类型: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, ZIP, RAR, 7Z, TAR, GZ, MP4, AVI, MOV, MP3, WAV, TXT, CSV, JSON, XML 等
 
 ## 许可证
 
