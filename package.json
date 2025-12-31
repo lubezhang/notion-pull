@@ -32,22 +32,23 @@
     "dist"
   ],
   "dependencies": {
-    "@notionhq/client": "^5.3.0",
+    "@notionhq/client": "^5.6.0",
     "commander": "^14.0.2",
+    "dotenv": "^17.2.3",
     "notion-to-md": "^3.1.9",
     "undici": "^7.16.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@types/node": "^24.10.0",
-    "@typescript-eslint/eslint-plugin": "^8.46.3",
-    "@typescript-eslint/parser": "^8.46.3",
-    "eslint": "^9.39.1",
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^24.10.4",
+    "@typescript-eslint/eslint-plugin": "^8.51.0",
+    "@typescript-eslint/parser": "^8.51.0",
+    "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^16.5.0",
-    "prettier": "^3.6.2",
+    "prettier": "^3.7.4",
     "ts-node": "^10.9.2",
-    "tsx": "^4.20.6",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }
