@@ -1,5 +1,7 @@
 # notion-pull
 
+English | [简体中文](./README.zh-CN.md)
+
 A powerful CLI tool for recursively exporting Notion pages to Markdown format while preserving the complete hierarchical structure.
 
 ## Features
