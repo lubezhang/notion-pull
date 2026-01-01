@@ -1,263 +1,268 @@
 # notion-pull
 
-一个强大的 CLI 工具,用于将 Notion 笔记递归导出为 Markdown 格式文件,完整保留笔记的层级结构。
+A powerful CLI tool for recursively exporting Notion pages to Markdown format while preserving the complete hierarchical structure.
 
-## 功能特性
+## Features
 
-- **递归导出**: 自动导出页面及其所有子页面,保持原有层级结构
-- **内容隔离**: 每个页面的 Markdown 文件只包含该页面自身的内容,不包含子页面内容
-- **数据库表格导出**: Notion 数据库自动转换为 Markdown 表格格式,支持多种属性类型
-- **媒体文件下载**: 可选下载图片和附件文件到本地,并自动替换 Markdown 中的链接
-- **Markdown 转换**: 使用 `notion-to-md` 将 Notion 页面转换为标准 Markdown 格式
-- **智能文件命名**: 自动清理页面标题中的非法字符,生成安全的文件名
-- **目录结构映射**: 子页面会创建对应的子目录,保持 Notion 中的组织结构
-- **完整的 Notion API 支持**: 支持页面(Page)和数据库(Database)类型
+- **Recursive Export**: Automatically exports pages and all their subpages, maintaining the original hierarchy
+- **Content Isolation**: Each page's Markdown file contains only its own content, excluding child page content
+- **Database Table Export**: Notion databases are automatically converted to Markdown table format with support for multiple property types
+- **Media Download**: Optionally download images and attachments locally with automatic link replacement in Markdown
+- **Smart File Naming**: Automatically sanitizes page titles by removing invalid characters to generate safe filenames
+- **Directory Structure Mapping**: Subpages create corresponding subdirectories, preserving Notion's organizational structure
+- **Full Notion API Support**: Supports both Page and Database block types
 
-## 安装
+## Installation
 
-项目依赖 Node.js 18+,推荐使用 `pnpm`:
+Requires Node.js 18+. Using `pnpm` is recommended:
 
 ```bash
 pnpm install
 ```
 
-## 快速开始
+Or install globally via npm:
 
-### 1. 配置环境变量
+```bash
+npm install -g notion-pull
+```
 
-复制 `.env.example` 为 `.env`,并填写你的 Notion 配置:
+## Quick Start
+
+### 1. Configure Environment Variables
+
+Copy `.env.example` to `.env` and fill in your Notion configuration:
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env` 文件:
+Edit the `.env` file:
 
 ```env
 NOTION_API_KEY=your_integration_token_here
 NOTION_PAGE_ID=your_page_id_here
 ```
 
-**如何获取这些信息:**
+**How to obtain these values:**
 
 - **NOTION_API_KEY**:
-  1. 访问 https://www.notion.so/my-integrations
-  2. 创建新的集成(Integration)
-  3. 复制 "Internal Integration Token"
+  1. Visit https://www.notion.so/my-integrations
+  2. Create a new Integration
+  3. Copy the "Internal Integration Token"
 
 - **NOTION_PAGE_ID**:
-  1. 打开你想导出的 Notion 页面
-  2. 从浏览器地址栏复制 URL,格式为: `https://notion.so/xxx-<PAGE_ID>?xxx`
-  3. 提取其中的 PAGE_ID(32位字符)
+  1. Open the Notion page you want to export
+  2. Copy the URL from the browser address bar: `https://notion.so/xxx-<PAGE_ID>?xxx`
+  3. Extract the PAGE_ID (32 characters)
 
-### 2. 运行导出
+### 2. Run Export
 
 ```bash
-# 使用环境变量中的配置
+# Use configuration from environment variables
 pnpm dev export
 
-# 或者直接指定页面 ID
+# Or specify a page ID directly
 pnpm dev export <PAGE_ID>
 
-# 自定义输出目录
+# Custom output directory
 pnpm dev export <PAGE_ID> --output ./my-notes
 
-# 或使用构建后的版本
+# Or use the built version
 pnpm build
 pnpm start export <PAGE_ID>
 ```
 
-## CLI 命令
+## CLI Commands
 
 ### export
 
-导出 Notion 页面及其所有子页面为 Markdown 文件。
+Exports a Notion page and all its subpages to Markdown files.
 
 ```bash
 notion-pull export [pageId] [options]
 ```
 
-**参数:**
+**Arguments:**
 
-- `[pageId]` - Notion 页面 ID (可选,如不提供则从 `NOTION_PAGE_ID` 环境变量读取)
+- `[pageId]` - Notion page ID (optional; if not provided, reads from `NOTION_PAGE_ID` environment variable)
 
-**选项:**
+**Options:**
 
-- `-o, --output <dir>` - 输出目录 (默认: `./notion-export`)
-- `-d, --download-media` - 下载图片和文件到本地 (默认: `false`)
-- `-a, --attachments-dir <name>` - 附件目录名称 (默认: `attachments`)
+- `-o, --output <dir>` - Output directory (default: `./notion-export`)
+- `-d, --download-media` - Download images and files locally (default: `true`)
+- `-a, --attachments-dir <name>` - Attachments directory name (default: `attachments`)
 
-**示例:**
+**Examples:**
 
 ```bash
-# 使用环境变量中的页面 ID,导出到默认目录
+# Use page ID from environment variable, export to default directory
 notion-pull export
 
-# 指定页面 ID 和输出目录
+# Specify page ID and output directory
 notion-pull export abc123def456 --output ./my-backup
 
-# 导出并下载所有图片和文件
+# Export and download all images and files
 notion-pull export --download-media
 
-# 导出并下载文件到自定义附件目录
+# Export and download files to a custom attachments directory
 notion-pull export --download-media --attachments-dir media
 
-# 导出到自定义目录
+# Export to a custom directory
 notion-pull export --output ~/Documents/notion-backup
 ```
 
-## 输出结构示例
+## Output Structure Examples
 
-### 基本导出（不下载媒体文件）
+### Basic Export (Without Media Download)
 
-假设你的 Notion 结构如下:
+Given a Notion structure like:
 
 ```
-📄 我的知识库 (根页面)
-  ├── 📄 编程笔记
+📄 My Knowledge Base (root page)
+  ├── 📄 Programming Notes
   │   ├── 📄 JavaScript
   │   └── 📄 Python
-  ├── 🗄️ 项目任务 (数据库)
-  ├── 📄 读书笔记
-  │   └── 📄 技术类
-  └── 📄 工作日志
+  ├── 🗄️ Project Tasks (database)
+  ├── 📄 Reading Notes
+  │   └── 📄 Technical Books
+  └── 📄 Work Log
 ```
 
-导出后的文件结构:
+The exported file structure:
 
 ```
 notion-export/
-├── 我的知识库.md
-└── 我的知识库/
-    ├── 编程笔记.md
-    ├── 编程笔记/
+├── My Knowledge Base.md
+└── My Knowledge Base/
+    ├── Programming Notes.md
+    ├── Programming Notes/
     │   ├── JavaScript.md
     │   └── Python.md
-    ├── 项目任务.md          # 数据库导出为表格
-    ├── 读书笔记.md
-    ├── 读书笔记/
-    │   └── ���术类.md
-    └── 工作日志.md
+    ├── Project Tasks.md          # Database exported as table
+    ├── Reading Notes.md
+    ├── Reading Notes/
+    │   └── Technical Books.md
+    └── Work Log.md
 ```
 
-### 数据库表格导出示例
+### Database Table Export Example
 
-Notion 数据库会被导出为 Markdown 表格。例如,一个任务管理数据库:
+Notion databases are exported as Markdown tables. For example, a task management database:
 
-**Notion 中的数据库:**
-- 任务名称 (Title)
-- 状态 (Select: 待办/进行中/已完成)
-- 优先级 (Select: 高/中/低)
-- 截止日期 (Date)
+**Database in Notion:**
+- Task Name (Title)
+- Status (Select: To Do / In Progress / Completed)
+- Priority (Select: High / Medium / Low)
+- Due Date (Date)
 
-**导出的 `项目任务.md` 文件:**
+**Exported `Project Tasks.md` file:**
 
 ```markdown
-# 项目任务
+# Project Tasks
 
-| 任务名称 | 状态 | 优先级 | 截止日期 |
+| Task Name | Status | Priority | Due Date |
 | --- | --- | --- | --- |
-| 完成项目文档 | 进行中 | 高 | 2025-01-15 |
-| 代码审查 | 待办 | 中 | 2025-01-10 |
-| 部署到生产环境 | 已完成 | 高 | 2025-01-05 |
+| Complete project docs | In Progress | High | 2025-01-15 |
+| Code review | To Do | Medium | 2025-01-10 |
+| Deploy to production | Completed | High | 2025-01-05 |
 ```
 
-**支持的数据库属性类型:**
-- Title (标题)、Rich Text (富文本)、Number (数字)
-- Select (单选)、Multi-select (多选)、Status (状态)
-- Date (日期)、Checkbox (复选框)
-- URL (链接)、Email (邮箱)、Phone Number (电话)
-- People (人员)、Files (文件)
-- Created Time (创建时间)、Last Edited Time (最后编辑时间)
+**Supported Database Property Types:**
+- Title, Rich Text, Number
+- Select, Multi-select, Status
+- Date, Checkbox
+- URL, Email, Phone Number
+- People, Files
+- Created Time, Last Edited Time
 
-**数据库条目的详细内容:**
+**Database Entry Details:**
 
-如果数据库条目包含额外的内容块或子页面,会创建 `{数据库名}_详情/` 目录:
-
-```
-notion-export/
-└── 我的知识库/
-    ├── 项目任务.md              # 表格汇总
-    └── 项目任务_详情/            # 条目详细内容
-        ├── 完成项目文档.md
-        └── 部署到生产环境.md
-```
-
-### 启用媒体文件下载后的结构
-
-使用 `--download-media` 选项时:
+If database entries contain additional content blocks or subpages, a `{DatabaseName}_details/` directory is created:
 
 ```
 notion-export/
-├── 我的知识库.md
-└── 我的知识库/
-    ├── attachments/           # 媒体文件目录
+└── My Knowledge Base/
+    ├── Project Tasks.md              # Table summary
+    └── Project Tasks_details/        # Entry details
+        ├── Complete project docs.md
+        └── Deploy to production.md
+```
+
+### With Media Download Enabled
+
+Using the `--download-media` option:
+
+```
+notion-export/
+├── My Knowledge Base.md
+└── My Knowledge Base/
+    ├── attachments/           # Media files directory
     │   ├── image1_1234567.png
     │   ├── diagram_1234568.jpg
     │   └── document_1234569.pdf
-    ├── 编程笔记.md
-    ├── 编程笔记/
-    │   ├── attachments/       # 每个目录都有独立的附件文件夹
+    ├── Programming Notes.md
+    ├── Programming Notes/
+    │   ├── attachments/       # Each directory has its own attachments folder
     │   │   └── code_1234570.png
     │   ├── JavaScript.md
     │   └── Python.md
-    ├── 读书笔记.md
-    ├── 读书笔记/
-    │   └── 技术类.md
-    └── 工作日志.md
+    ├── Reading Notes.md
+    ├── Reading Notes/
+    │   └── Technical Books.md
+    └── Work Log.md
 ```
 
-**说明:**
-- 图片和文件会下载到每个笔记所在目录的 `attachments/` 子目录
-- Markdown 文件中的链接会自动替换为相对路径,如: `![图片](attachments/image_1234567.png)`
-- 支持的文件类型包括: 图片(PNG, JPG等)、PDF、Office文档、压缩包、音视频等
+**Notes:**
+- Images and files are downloaded to an `attachments/` subdirectory within each page's directory
+- Links in Markdown files are automatically replaced with relative paths, e.g., `![Image](attachments/image_1234567.png)`
+- Supported file types include: images (PNG, JPG, etc.), PDF, Office documents, archives, audio/video, and more
 
-## 开发命令
+## Development Commands
 
-- `pnpm dev` - 使用 tsx 直接运行源码
-- `pnpm build` - 编译 TypeScript 到 `dist/`
-- `pnpm start` - 运行编译后的代码
-- `pnpm lint` - 运行 ESLint 检查
-- `pnpm test` - 运行测试(当前占位)
+- `pnpm dev` - Run source code directly with tsx
+- `pnpm build` - Compile TypeScript to `dist/`
+- `pnpm start` - Run compiled code
+- `pnpm lint` - Run ESLint checks
+- `pnpm test` - Run tests (placeholder)
 
-## 项目结构
+## Project Structure
 
 ```
 src/
-├── cli.ts              # CLI 入口和命令定义
-├── NotionClient.ts     # Notion API 客户端封装
-├── NotionToMarkdown.ts # Markdown 转换器
-├── NotionExporter.ts   # 导出器主逻辑
-└── FileDownloader.ts   # 文件下载管理器
+├── cli.ts                # CLI entry point and command definitions
+├── NotionClient.ts       # Notion API client wrapper
+├── NotionToMarkdown.ts   # Markdown converter
+├── NotionExporter.ts     # Main export logic
+├── DatabaseToMarkdown.ts # Database to Markdown table converter
+└── FileDownloader.ts     # File download manager
 ```
 
-## 技术栈
+## Tech Stack
 
-- **@notionhq/client** - Notion 官方 API 客户端
-- **notion-to-md** - Notion 块转 Markdown 转换器
-- **commander** - CLI 框架
-- **undici** - 高性能 HTTP 客户端 (用于文件下载)
-- **TypeScript** - 类型安全
+- **@notionhq/client** - Official Notion API client
+- **notion-to-md** - Notion blocks to Markdown converter
+- **commander** - CLI framework
+- **undici** - High-performance HTTP client (for file downloads)
+- **TypeScript** - Type safety
 
-## 注意事项
+## Important Notes
 
-1. **权限设置**: 确保你的 Notion Integration 已被添加到要导出的页面中
-   - 打开 Notion 页面
-   - 点击右上角的 "···" 菜单
-   - 选择 "Add connections"
-   - 选择你创建的 Integration
+1. **Permission Setup**: Ensure your Notion Integration has been added to the pages you want to export
+   - Open the Notion page
+   - Click the "···" menu in the top right
+   - Select "Add connections"
+   - Choose your created Integration
 
-2. **速率限制**: Notion API 有速率限制,导出大量页面时可能需要一些时间
+2. **Rate Limiting**: The Notion API has rate limits; exporting many pages may take some time
 
-3. **文件名处理**: 特殊字符(如 `<>:"/\|?*`)会被替换为下划线
+3. **Filename Handling**: Special characters (such as `<>:"/\|?*`) are replaced with underscores
 
-4. **媒体文件下载**:
-   - Notion 中的图片和文件 URL 有时效性,建议使用 `--download-media` 选项将其保存到本地
-   - 下载失败的文件会在日志中标记,但不会中断导出流程
-   - 文件名会添加时间戳后缀以避免冲突
-   - 支持的文件类型: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, ZIP, RAR, 7Z, TAR, GZ, MP4, AVI, MOV, MP3, WAV, TXT, CSV, JSON, XML 等
+4. **Media File Download**:
+   - Image and file URLs in Notion have expiration times; use `--download-media` to save them locally
+   - Failed downloads are logged but don't interrupt the export process
+   - Filenames include timestamp suffixes to avoid conflicts
+   - Supported file types: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, ZIP, RAR, 7Z, TAR, GZ, MP4, AVI, MOV, MP3, WAV, TXT, CSV, JSON, XML, etc.
 
-## 许可证
+## License
 
 MIT
-
