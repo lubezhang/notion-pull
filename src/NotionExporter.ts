@@ -1,4 +1,4 @@
-import NotionClient, { propertiesToMarkdown, databaseToMarkdownTable } from "./NotionClient.js";
+import NotionClient, { propertiesToMarkdown, databaseToMarkdownTable, ChildPageInfo, DatabaseToMarkdownOptions } from "./NotionClient.js";
 import NotionToMarkdown from "./NotionToMarkdown.js";
 import FileDownloader from "./FileDownloader.js";
 import { mkdir, writeFile } from "fs/promises";
@@ -137,6 +137,22 @@ export default class NotionExporter {
             // 获取子页面
             const childPages = await this.notionClient.getChildPages(pageId);
 
+            // 筛选出子数据库
+            const childDatabases = childPages.filter(child => child.type === "database");
+
+            // 如果有子数据库，在页面内容末尾添加关联链接
+            if (childDatabases.length > 0 && markdown && markdown.trim() !== "") {
+                let databaseLinks = "\n\n---\n\n## 📊 关联数据库\n\n";
+                for (const db of childDatabases) {
+                    const safeDbTitle = this.sanitizeFileName(db.title || "Untitled Database");
+                    databaseLinks += `- [${db.title}](${encodeURIComponent(safeTitle)}/${encodeURIComponent(safeDbTitle)}.md)\n`;
+                }
+
+                // 重新写入带有数据库链接的内容
+                const filePath = join(currentDir, `${safeTitle}.md`);
+                await writeFile(filePath, markdown + databaseLinks, "utf-8");
+            }
+
             if (childPages.length > 0) {
                 console.log(`${indent}  └─ 发现 ${childPages.length} 个子页面`);
 
@@ -148,7 +164,7 @@ export default class NotionExporter {
                 for (const childPage of childPages) {
                     // 根据类型区分处理页面和数据库
                     if (childPage.type === "database") {
-                        await this.exportDatabaseRecursive(childPage.id, subDir, downloadMedia, attachmentsDir, depth + 1);
+                        await this.exportDatabaseRecursive(childPage.id, subDir, downloadMedia, attachmentsDir, depth + 1, safeTitle);
                     } else {
                         await this.exportPageRecursive(childPage.id, subDir, downloadMedia, attachmentsDir, depth + 1);
                     }
@@ -166,13 +182,15 @@ export default class NotionExporter {
      * @param downloadMedia - 是否下载图片和文件
      * @param attachmentsDir - 附件目录名称
      * @param depth - 当前递归深度(用于日志缩进)
+     * @param parentPageTitle - 父页面标题(用于生成返回链接)
      */
     private async exportDatabaseRecursive(
         databaseId: string,
         currentDir: string,
         downloadMedia: boolean = false,
         attachmentsDir: string = "attachments",
-        depth: number = 0
+        depth: number = 0,
+        parentPageTitle?: string
     ): Promise<void> {
         const indent = "  ".repeat(depth);
 
@@ -193,16 +211,10 @@ export default class NotionExporter {
             if (pages.results && pages.results.length > 0) {
                 console.log(`${indent}  └─ 发现 ${pages.results.length} 个数据库条目,导出为表格`);
 
-                // 将数据库转换为 Markdown 表格
-                const tableMarkdown = databaseToMarkdownTable(pages.results, safeTitle);
-
-                // 写入表格文件
-                const filePath = join(currentDir, `${safeTitle}.md`);
-                await writeFile(filePath, tableMarkdown, "utf-8");
-
-                // 导出每个数据库条目的详细页面内容(如果有内容块或子页面)
-                const detailsDir = join(currentDir, `${safeTitle}_详情`);
-                let hasDetails = false;
+                // 先检查每个条目是否有详情内容，收集有详情的页面ID
+                const detailsDirName = `${safeTitle}_详情`;
+                const detailsDir = join(currentDir, detailsDirName);
+                const pagesWithDetails = new Set<string>();
 
                 for (const page of pages.results) {
                     if ("id" in page) {
@@ -213,25 +225,47 @@ export default class NotionExporter {
 
                         const childPages = await this.notionClient.getChildPages(page.id);
 
-                        // 只有当页面有内容块或子页面时才创建详情目录并导出
+                        // 记录有详情内容的页面
                         if (pageBlocks.results.length > 0 || childPages.length > 0) {
-                            if (!hasDetails) {
-                                await mkdir(detailsDir, { recursive: true });
-                                hasDetails = true;
-                            }
-                            await this.exportPageRecursive(page.id, detailsDir, downloadMedia, attachmentsDir, depth + 1);
+                            pagesWithDetails.add(page.id);
                         }
                     }
                 }
 
-                if (hasDetails) {
-                    console.log(`${indent}  └─ 详细内容已导出到: ${safeTitle}_详情/`);
+                // 将数据库转换为 Markdown 表格，包含关联信息
+                const tableOptions: DatabaseToMarkdownOptions = {
+                    databaseName: safeTitle,
+                    parentPageTitle: parentPageTitle,
+                    detailsDir: detailsDirName,
+                    pagesWithDetails: pagesWithDetails,
+                };
+                const tableMarkdown = databaseToMarkdownTable(pages.results, tableOptions);
+
+                // 写入表格文件
+                const filePath = join(currentDir, `${safeTitle}.md`);
+                await writeFile(filePath, tableMarkdown, "utf-8");
+
+                // 导出有详情内容的页面
+                if (pagesWithDetails.size > 0) {
+                    await mkdir(detailsDir, { recursive: true });
+
+                    for (const page of pages.results) {
+                        if ("id" in page && pagesWithDetails.has(page.id)) {
+                            await this.exportPageRecursive(page.id, detailsDir, downloadMedia, attachmentsDir, depth + 1);
+                        }
+                    }
+
+                    console.log(`${indent}  └─ 详细内容已导出到: ${detailsDirName}/`);
                 }
             } else {
                 console.log(`${indent}  └─ 数据库为空`);
 
-                // 即使数据库为空,也创建一个文件
-                const emptyTableMarkdown = databaseToMarkdownTable([], safeTitle);
+                // 即使数据库为空,也创建一个文件（带父页面链接）
+                const tableOptions: DatabaseToMarkdownOptions = {
+                    databaseName: safeTitle,
+                    parentPageTitle: parentPageTitle,
+                };
+                const emptyTableMarkdown = databaseToMarkdownTable([], tableOptions);
                 const filePath = join(currentDir, `${safeTitle}.md`);
                 await writeFile(filePath, emptyTableMarkdown, "utf-8");
             }

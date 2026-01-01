@@ -142,18 +142,43 @@ export function extractPropertyValue(property: any): string {
     }
 }
 
+export interface DatabaseToMarkdownOptions {
+    databaseName?: string;
+    parentPageTitle?: string;           // 父页面标题(用于生成返回链接)
+    detailsDir?: string;                // 详情目录名称
+    pagesWithDetails?: Set<string>;     // 有详情内容的页面ID集合
+}
+
 /**
  * 将数据库页面数组转换为 Markdown 表格
  */
-export function databaseToMarkdownTable(pages: PageOrDatabase[], databaseName: string = "Database"): string {
+export function databaseToMarkdownTable(pages: PageOrDatabase[], options: DatabaseToMarkdownOptions | string = "Database"): string {
+    // 兼容旧版调用方式
+    const opts: DatabaseToMarkdownOptions = typeof options === "string"
+        ? { databaseName: options }
+        : options;
+
+    const databaseName = opts.databaseName || "Database";
+    const parentPageTitle = opts.parentPageTitle;
+    const detailsDir = opts.detailsDir;
+    const pagesWithDetails = opts.pagesWithDetails;
+
+    // 构建头部
+    let header = `# ${databaseName}\n\n`;
+
+    // 添加返回父页面的链接
+    if (parentPageTitle) {
+        header += `> 📂 所属页面: [${parentPageTitle}](../${encodeURIComponent(parentPageTitle)}.md)\n\n`;
+    }
+
     if (pages.length === 0) {
-        return `# ${databaseName}\n\n_数据库为空_\n`;
+        return header + `_数据库为空_\n`;
     }
 
     // 获取第一个完整页面来确定列
     const firstFullPage = pages.find(p => isFullPage(p) && "properties" in p);
     if (!firstFullPage || !("properties" in firstFullPage)) {
-        return `# ${databaseName}\n\n_无法读取数据库结构_\n`;
+        return header + `_无法读取数据库结构_\n`;
     }
 
     // 提取所有属性名称作为列标题，并按照合理的顺序排列
@@ -172,9 +197,13 @@ export function databaseToMarkdownTable(pages: PageOrDatabase[], databaseName: s
 
     const columnNames = [...titleColumns, ...otherColumns];
 
+    // 判断是否需要添加详情链接列
+    const hasDetailsColumn = detailsDir && pagesWithDetails && pagesWithDetails.size > 0;
+
     // 构建表格标题行
-    const headerRow = `| ${columnNames.join(" | ")} |`;
-    const separatorRow = `| ${columnNames.map(() => "---").join(" | ")} |`;
+    const allColumns = hasDetailsColumn ? [...columnNames, "详情"] : columnNames;
+    const headerRow = `| ${allColumns.join(" | ")} |`;
+    const separatorRow = `| ${allColumns.map(() => "---").join(" | ")} |`;
 
     // 构建数据行
     const dataRows: string[] = [];
@@ -190,11 +219,28 @@ export function databaseToMarkdownTable(pages: PageOrDatabase[], databaseName: s
             return value.replace(/\|/g, "\\|").replace(/\n/g, " ");
         });
 
+        // 添加详情链接
+        if (hasDetailsColumn) {
+            if (pagesWithDetails.has(page.id)) {
+                // 获取页面标题用于链接
+                const titleProperty = Object.values(page.properties).find(p => p.type === "title");
+                let pageTitle = "Untitled";
+                if (titleProperty && titleProperty.type === "title" && Array.isArray(titleProperty.title)) {
+                    pageTitle = titleProperty.title.map(t => "plain_text" in t ? t.plain_text : "").join("") || "Untitled";
+                }
+                // 清理文件名
+                const safeTitle = pageTitle.replace(/[<>:"/\\|?*]/g, "_").replace(/\s+/g, " ").trim().substring(0, 200);
+                cells.push(`[📄 详情](${encodeURIComponent(detailsDir)}/${encodeURIComponent(safeTitle)}.md)`);
+            } else {
+                cells.push("-");
+            }
+        }
+
         dataRows.push(`| ${cells.join(" | ")} |`);
     }
 
     // 组合成完整的 Markdown 表格
-    return `# ${databaseName}\n\n${headerRow}\n${separatorRow}\n${dataRows.join("\n")}\n`;
+    return `${header}${headerRow}\n${separatorRow}\n${dataRows.join("\n")}\n`;
 }
 
 /**
