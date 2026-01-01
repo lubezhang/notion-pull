@@ -18,7 +18,7 @@ program
     .description("导出 Notion 页面及其所有子页面为 Markdown 文件")
     .argument("[pageId]", "Notion 页面 ID（如果不提供，将从环境变量 NOTION_PAGE_ID 读取）")
     .option("-o, --output <dir>", "输出目录", "./notion-export")
-    .option("-d, --download-media", "下载图片和文件到本地（默认：false）", false)
+    .option("-d, --download-media", "下载图片和文件到本地（默认：true）", true)
     .option("-a, --attachments-dir <name>", "附件目录名称（默认：attachments）", "attachments")
     .action(async (pageId, options) => {
         const id = pageId || process.env.NOTION_PAGE_ID;
