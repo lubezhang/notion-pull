@@ -93,10 +93,21 @@ export default class NotionExporter {
                 }
             }
 
-            // 检查是否有内容
-            if (markdown === undefined || markdown === null || markdown.trim() === "") {
+            // 获取子页面（提前获取，用于判断是否需要创建文件）
+            const childPages = await this.notionClient.getChildPages(pageId);
+            const hasChildren = childPages.length > 0;
+
+            // 检查是否有实际内容（排除占位符文本）
+            const placeholderText = "_此页面仅包含标题,无其他内容_";
+            const isPlaceholderOnly = markdown?.trim() === placeholderText;
+            const hasContent = markdown !== undefined && markdown !== null && markdown.trim() !== "" && !isPlaceholderOnly;
+
+            // 如果有子页面但内容为空或只有占位符，不创建与目录同名的空 MD 文件
+            if (!hasContent && hasChildren) {
+                console.warn(`${indent}  ⚠️  页面内容为空,跳过创建与目录同名的空文件`);
+            } else if (!hasContent) {
+                // 无子页面且内容为空：跳过
                 console.warn(`${indent}  ⚠️  页面内容为空,跳过写入文件`);
-                // 仍然继续处理子页面
             } else {
                 // 如果启用了文件下载
                 if (downloadMedia && markdown) {
@@ -134,14 +145,11 @@ export default class NotionExporter {
                 await writeFile(filePath, markdown, "utf-8");
             }
 
-            // 获取子页面
-            const childPages = await this.notionClient.getChildPages(pageId);
-
             // 筛选出子数据库
             const childDatabases = childPages.filter(child => child.type === "database");
 
             // 如果有子数据库，在页面内容末尾添加关联链接
-            if (childDatabases.length > 0 && markdown && markdown.trim() !== "") {
+            if (childDatabases.length > 0 && hasContent) {
                 let databaseLinks = "\n\n---\n\n## 📊 关联数据库\n\n";
                 for (const db of childDatabases) {
                     const safeDbTitle = this.sanitizeFileName(db.title || "Untitled Database");
@@ -153,7 +161,7 @@ export default class NotionExporter {
                 await writeFile(filePath, markdown + databaseLinks, "utf-8");
             }
 
-            if (childPages.length > 0) {
+            if (hasChildren) {
                 console.log(`${indent}  └─ 发现 ${childPages.length} 个子页面`);
 
                 // 创建子目录
