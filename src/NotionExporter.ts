@@ -36,7 +36,7 @@ export default class NotionExporter {
      * @param options - 导出选项
      */
     public async export(options: ExportOptions): Promise<void> {
-        const { outputDir, rootPageId, downloadMedia = false, attachmentsDir = "attachments" } = options;
+        const { outputDir, rootPageId, downloadMedia = true, attachmentsDir = "attachments" } = options;
 
         console.log(`开始导出页面: ${rootPageId}`);
         console.log(`输出目录: ${outputDir}`);
