@@ -12,25 +12,25 @@ program
     .description("CLI to export Notion pages to Markdown format")
     .version("1.0.0");
 
-// 导出命令
+// Export command
 program
     .command("export")
-    .description("导出 Notion 页面及其所有子页面为 Markdown 文件")
-    .argument("[pageId]", "Notion 页面 ID（如果不提供，将从环境变量 NOTION_PAGE_ID 读取）")
-    .option("-o, --output <dir>", "输出目录", "./notion-export")
-    .option("--no-download-media", "不下载图片和文件到本地（默认下载）")
-    .option("-a, --attachments-dir <name>", "附件目录名称（默认：attachments）", "attachments")
+    .description("Export Notion page and all its subpages to Markdown files")
+    .argument("[pageId]", "Notion page ID (reads from NOTION_PAGE_ID env var if not provided)")
+    .option("-o, --output <dir>", "Output directory", "./notion-export")
+    .option("--no-download-media", "Do not download images and files locally (downloads by default)")
+    .option("-a, --attachments-dir <name>", "Attachments directory name", "attachments")
     .action(async (pageId, options) => {
         const id = pageId || process.env.NOTION_PAGE_ID;
         const apiKey = process.env.NOTION_API_KEY;
 
         if (!id) {
-            console.error("❌ 错误: 缺少页面 ID。请作为参数提供或在 .env 文件中设置 NOTION_PAGE_ID");
+            console.error("❌ Error: Missing page ID. Provide it as an argument or set NOTION_PAGE_ID in .env file");
             process.exit(1);
         }
 
         if (!apiKey) {
-            console.error("❌ 错误: 缺少 API 密钥。请在 .env 文件中设置 NOTION_API_KEY");
+            console.error("❌ Error: Missing API key. Set NOTION_API_KEY in .env file");
             process.exit(1);
         }
 
@@ -43,7 +43,7 @@ program
                 attachmentsDir: options.attachmentsDir,
             });
         } catch (error) {
-            console.error("❌ 导出失败:", error instanceof Error ? error.message : String(error));
+            console.error("❌ Export failed:", error instanceof Error ? error.message : String(error));
             process.exit(1);
         }
     });
