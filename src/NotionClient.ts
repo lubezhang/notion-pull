@@ -367,4 +367,35 @@ export default class NotionClient {
 
         return childPages;
     }
+
+    /**
+     * 分页查询数据库中的所有条目
+     * @param databaseId - 数据库 ID
+     * @yields 数据库中的每个页面对象
+     */
+    public async *queryDatabasePaginated(databaseId: string): AsyncGenerator<PageOrDatabase> {
+        interface DatabaseQueryResponse {
+            results: PageOrDatabase[];
+            has_more: boolean;
+            next_cursor: string | null;
+        }
+
+        let hasMore = true;
+        let startCursor: string | undefined = undefined;
+
+        while (hasMore) {
+            const response: DatabaseQueryResponse = await this.notion.request<DatabaseQueryResponse>({
+                path: `databases/${databaseId}/query`,
+                method: "post",
+                body: startCursor ? { start_cursor: startCursor } : {},
+            });
+
+            for (const page of response.results) {
+                yield page;
+            }
+
+            hasMore = response.has_more;
+            startCursor = response.next_cursor ?? undefined;
+        }
+    }
 }

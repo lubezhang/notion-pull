@@ -210,21 +210,21 @@ export default class NotionExporter {
 
             console.log(`${indent}🗄️  导出数据库: ${safeTitle}`);
 
-            // 查询数据库中的所有页面
-            const pages = await this.notionClient.getClient().request<{ results: any[] }>({
-                path: `databases/${databaseId}/query`,
-                method: "post",
-            });
+            // 查询数据库中的所有页面（使用分页 API 确保获取所有记录）
+            const allPages: any[] = [];
+            for await (const page of this.notionClient.queryDatabasePaginated(databaseId)) {
+                allPages.push(page);
+            }
 
-            if (pages.results && pages.results.length > 0) {
-                console.log(`${indent}  └─ 发现 ${pages.results.length} 个数据库条目,导出为表格`);
+            if (allPages.length > 0) {
+                console.log(`${indent}  └─ 发现 ${allPages.length} 个数据库条目,导出为表格`);
 
                 // 先检查每个条目是否有详情内容，收集有详情的页面ID
                 const detailsDirName = `${safeTitle}_详情`;
                 const detailsDir = join(currentDir, detailsDirName);
                 const pagesWithDetails = new Set<string>();
 
-                for (const page of pages.results) {
+                for (const page of allPages) {
                     if ("id" in page) {
                         // 检查页面是否有内容块或子页面
                         const pageBlocks = await this.notionClient.getClient().blocks.children.list({
@@ -247,7 +247,7 @@ export default class NotionExporter {
                     detailsDir: detailsDirName,
                     pagesWithDetails: pagesWithDetails,
                 };
-                const tableMarkdown = databaseToMarkdownTable(pages.results, tableOptions);
+                const tableMarkdown = databaseToMarkdownTable(allPages, tableOptions);
 
                 // 写入表格文件
                 const filePath = join(currentDir, `${safeTitle}.md`);
@@ -257,7 +257,7 @@ export default class NotionExporter {
                 if (pagesWithDetails.size > 0) {
                     await mkdir(detailsDir, { recursive: true });
 
-                    for (const page of pages.results) {
+                    for (const page of allPages) {
                         if ("id" in page && pagesWithDetails.has(page.id)) {
                             await this.exportPageRecursive(page.id, detailsDir, downloadMedia, attachmentsDir, depth + 1);
                         }
