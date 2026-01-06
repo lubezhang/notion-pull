@@ -13,6 +13,7 @@ A powerful CLI tool for recursively exporting Notion pages to Markdown format wh
 - **Smart File Naming**: Automatically sanitizes page titles by removing invalid characters to generate safe filenames
 - **Directory Structure Mapping**: Subpages create corresponding subdirectories, preserving Notion's organizational structure
 - **Full Notion API Support**: Supports both Page and Database block types
+- **Robust Pagination**: Handles large databases and page lists with automatic pagination to ensure no data is lost
 
 ## Installation
 
